@@ -124,16 +124,26 @@ package() {
     msg2 'Installing license'
     install -D -m644 "${srcdir}/${pkgname}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 
+    # https://bbs.archlinux.org/viewtopic.php?id=236821
     msg2 'Removing unused library files'
-    rm ${pkgdir}/${_instdir}/sys/os/glnxa64/{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0,libfreetype.*}
+    _libdir="${pkgdir}/${_instdir}/sys/os/glnxa64/"
+    find "${_libdir}" -name "libstdc++.so.6.0.22"   -delete
+    find "${_libdir}" -name "libstdc++.so.6"        -delete
+    find "${_libdir}" -name "libgcc_s.so.1"         -delete
+    find "${_libdir}" -name "libgfortran.so.3.0.0"  -delete
+    find "${_libdir}" -name "libgfortran.so.3"      -delete
+    find "${_libdir}" -name "libquadmath.so.0.0.0"  -delete
+    find "${_libdir}" -name "libquadmath.so.0"      -delete
+    find "${_libdir}" -name "libfreetype.*"         -delete
+
+    # Replacing libfreetype library
+    # ln -sf /usr/lib64/libfreetype.so.6 "${_libdir}/libfreetype.so.6"
+    # ln -sf /usr/lib64/libfreetype.so.6.16.1 "${_libdir}/libfreetype.so.6.13"
 
     msg2 'Configuring mex options'
     sed -i "s#CC='gcc'#CC='gcc-6'#g" "${pkgdir}/${_instdir}/bin/mexopts.sh"
     sed -i "s#CXX='g++'#CXX='g++-6'#g" "${pkgdir}/${_instdir}/bin/mexopts.sh"
     sed -i "s#FC='gfortran'#FC='gfortran-6'#g" "${pkgdir}/${_instdir}/bin/mexopts.sh"
-
-    # https://bbs.archlinux.org/viewtopic.php?id=236821
-    rm ${pkgdir}/${_instdir}/bin/glnxa64/libfreetype.*
 
     # make sure MATLAB can find libgfortran.so.3
     sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${_instdir}/bin/matlab"

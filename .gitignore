@@ -2,5 +2,6 @@
 !/PKGBUILD
 !/matlab.desktop
 !/.gitignore
+!/.stignore
 !/.SRCBUILD
 !/README.md
