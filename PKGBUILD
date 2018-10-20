@@ -139,10 +139,10 @@ package() {
     # ln -sf /usr/lib64/libfreetype.so.6 "${_libdir}/libfreetype.so.6"
     # ln -sf /usr/lib64/libfreetype.so.6.16.1 "${_libdir}/libfreetype.so.6.13"
 
-    msg2 'Configuring mex options'
-    sed -i "s#CC='gcc'#CC='gcc-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
-    sed -i "s#CXX='g++'#CXX='g++-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
-    sed -i "s#FC='gfortran'#FC='gfortran-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
+    # msg2 'Configuring mex options'
+    # sed -i "s#CC='gcc'#CC='gcc-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
+    # sed -i "s#CXX='g++'#CXX='g++-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
+    # sed -i "s#FC='gfortran'#FC='gfortran-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
 
     # make sure MATLAB can find libgfortran.so.3
     sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${_instdir}/bin/matlab"
@@ -150,6 +150,8 @@ package() {
     msg2 'Installing desktop files'
     install -D -m755 matlab.desktop "${pkgdir}/usr/share/applications/${pkgname}.desktop"
 
+    msg2 'Creating symlinks'
+    ln -sf "${_instdir}/bin/matlab" "${pkgdir}/usr/bin/matlab"
 }
 
 if ${_partialinstall} && [ -z ${_products+isSet} ]; then
