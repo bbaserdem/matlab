@@ -45,16 +45,13 @@ pkgname=matlab
 # ├── trademarks.txt                # In zip
 # └── VersionInfo.xml               # In zip`
 
-## To perform a network install set $_networkinstall to true.
-_networkinstall=false
-
-## To perform partial install, set to true and modify the products list
+# To perform partial install, set to true and modify the products list
 _partialinstall=false
 
-# install dir
-_instdir="/opt/${pkgname}"
+pkgbase="matlab"
+pkgname=("matlab" "matlab-licenses")
 pkgver=9.5.0.944444
-pkgrel=1
+pkgrel=2
 pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
@@ -81,32 +78,23 @@ source=("file://matlab.tar"
         "file://matlab.fik"
         "file://matlab.lic"
         "matlab.desktop")
-md5sums=('SKIP'
-         'SKIP'
-         'SKIP'
-         'SKIP')
+md5sums=("SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP")
+
+instdir="/opt/tmw/${pkgbase}"
 
 prepare() {
-    # using system's libstdc++
-    # using system's libfreetype for CJK font
-    msg2 'Creating desktop file'
-
     msg2 'Extracting file installation key'
     _fik=$(grep -o [0-9-]* ${pkgname}.fik)
 
     msg2 'Modifying the installer settings'
-    sed -i "s,^# destinationFolder=,destinationFolder=${pkgdir}/${_instdir}," "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# agreeToLicense=,agreeToLicense=yes," "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# mode=,mode=silent," "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik}," "${srcdir}/${pkgname}/installer_input.txt"
-
-    if ${_networkinstall}; then
-        sed -i "s,^# licensePath=,licensePath=${srcdir}/matlab.lic," "${srcdir}/${pkgname}/installer_input.txt"
-    else
-        sed -i "s,^# activationPropertiesFile=,activationPropertiesFile=${srcdir}/${pkgname}/activate.ini," "${srcdir}/${pkgname}/installer_input.txt"
-        sed -i "s,^activateCommand=,activateCommand=activateOffline," "${srcdir}/${pkgname}/activate.ini"
-        sed -i "s,^licenseFile=,licenseFile=${srcdir}/matlab.lic," "${srcdir}/${pkgname}/activate.ini"
-    fi
+    sed -i "s,^# destinationFolder=,destinationFolder=${pkgdir}/${instdir},"    "${srcdir}/${pkgname}/installer_input.txt"
+    sed -i "s,^# agreeToLicense=,agreeToLicense=yes,"                           "${srcdir}/${pkgname}/installer_input.txt"
+    sed -i "s,^# mode=,mode=silent,"                                            "${srcdir}/${pkgname}/installer_input.txt"
+    sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik},"             "${srcdir}/${pkgname}/installer_input.txt"
+    sed -i "s,^# licensePath=,licensePath=${srcdir}/matlab.lic,"                "${srcdir}/${pkgname}/installer_input.txt"
 
     if [ ! -z ${_products+isSet} ]; then
         msg2 'Building a package with a subset of the licensed products.'
@@ -121,37 +109,44 @@ package() {
     "${srcdir}/${pkgname}/install" -inputFile "${srcdir}/${pkgname}/installer_input.txt"
 
     msg2 'Installing license'
-    install -D -m644 "${srcdir}/${pkgname}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -D -m644 "${pkgdir}/${instdir}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 
-    # https://bbs.archlinux.org/viewtopic.php?id=236821
-    msg2 'Removing unused library files'
-    _libdir="${pkgdir}/${_instdir}/sys/os/glnxa64/"
-    find "${_libdir}" -name "libstdc++.so.6.0.22"   -delete
-    find "${_libdir}" -name "libstdc++.so.6"        -delete
-    find "${_libdir}" -name "libgcc_s.so.1"         -delete
-    find "${_libdir}" -name "libgfortran.so.3.0.0"  -delete
-    find "${_libdir}" -name "libgfortran.so.3"      -delete
-    find "${_libdir}" -name "libquadmath.so.0.0.0"  -delete
-    find "${_libdir}" -name "libquadmath.so.0"      -delete
-    find "${_libdir}" -name "libfreetype.*"         -delete
+    msg2 'Creating links for license'
+    rm -rf "${srcdir}/${pkgname}/licenses"
+    mv "${pkgdir}/${instdir}/licenses" "${srcdir}/licenses"
+    mkdir -p "${pkgdir}/${instdir}/licenses"
 
-    # Replacing libfreetype library
-    # ln -sf /usr/lib64/libfreetype.so.6 "${_libdir}/libfreetype.so.6"
-    # ln -sf /usr/lib64/libfreetype.so.6.16.1 "${_libdir}/libfreetype.so.6.13"
-
-    # msg2 'Configuring mex options'
-    # sed -i "s#CC='gcc'#CC='gcc-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
-    # sed -i "s#CXX='g++'#CXX='g++-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
-    # sed -i "s#FC='gfortran'#FC='gfortran-6'#g" "${pkgdir}/${_instdir}/bin/glnxa64/mexopts.sh"
-
-    # make sure MATLAB can find libgfortran.so.3
-    sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${_instdir}/bin/matlab"
+    msg2 'Creating links for executables'
+    install -d -m755 "${pkgdir}/usr/bin/"
+    for _executable in deploytool matlab mbuild mcc; do
+        ln -s "${instdir}/bin/${_executable}" "${pkgdir}/usr/bin/${_executable}"
+    done
+    ln -s "${instdir}/bin/mex" "${pkgdir}/usr/bin/mex-$pkgbase"
 
     msg2 'Installing desktop files'
     install -D -m755 matlab.desktop "${pkgdir}/usr/share/applications/${pkgname}.desktop"
 
-    msg2 'Creating symlinks'
-    ln -sf "${_instdir}/bin/matlab" "${pkgdir}/usr/bin/matlab"
+    msg2 'Configuring mex options'
+    sed -i "s/gcc/gcc-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gcc_glnxa64.xml"
+    sed -i "s/g++/g++-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/g++_glnxa64.xml"
+    sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran.xml"
+    sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml"
+    sed -i "s/gfortran6-/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml"
+
+    # https://bbs.archlinux.org/viewtopic.php?id=236821
+    msg2 'Removing unused library files'
+    # See $MATLABROOT/sys/os/glnxa64/README.libstdc++
+    rm ${pkgdir}/${instdir}/sys/os/glnxa64/{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0}
+    # https://bbs.archlinux.org/viewtopic.php?id=236821
+    rm ${pkgdir}/${instdir}/bin/glnxa64/libfreetype.*
+    # make sure MATLAB can find libgfortran.so.3
+    sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${instdir}/bin/matlab"
+}
+
+package_matlab-licenses() {
+  depends=("matlab=$pkgver")
+  mkdir -p "${pkgdir}/${instdir}"
+  mv "${srcdir}/licenses" "${pkgdir}/${instdir}/licenses"
 }
 
 if ${_partialinstall} && [ -z ${_products+isSet} ]; then
