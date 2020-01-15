@@ -50,10 +50,9 @@ pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
 license=(custom)
-makedepends=('gendesk' 'python' 'find')
+makedepends=('gendesk' 'python')
 depends=('gcc6'
          'gconf'
-         'gendesk'
          'glu'
          'gstreamer0.10-base'
          'gtk2'
@@ -69,9 +68,9 @@ depends=('gcc6'
          'qt5-websockets'
          'qt5-x11extras'
          'xerces-c')
-source=("file://matlab.tar"
-        "file://matlab.fik"
-        "file://matlab.lic")
+source=("matlab.tar"
+        "matlab.fik"
+        "matlab.lic")
 md5sums=("SKIP"
          "SKIP"
          "SKIP")
@@ -85,11 +84,11 @@ prepare() {
     _fik=$(grep -o [0-9-]* ${pkgbase}.fik)
 
     msg2 'Modifying the installer settings'
-    sed -i "s,^# destinationFolder=,destinationFolder=${srcdir}/files," "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s,^# agreeToLicense=,agreeToLicense=yes,"                   "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s,^# mode=,mode=silent,"                                    "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik},"     "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s,^# licensePath=,licensePath=${srcdir}/matlab.lic,"        "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/files|" "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# agreeToLicense=|agreeToLicense=yes|"                   "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# mode=|mode=automated|"                                 "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# fileInstallationKey=|fileInstallationKey=${_fik}|"     "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# licensePath=|licensePath=${srcdir}/matlab.lic|"        "${srcdir}/${pkgbase}/installer_input.txt"
 
     msg2 'Creating desktop file'
     gendesk -f -n \
@@ -102,7 +101,7 @@ prepare() {
     if [ ! -z ${products+isSet} ]; then
         msg2 'Building a package with a subset of the licensed products.'
         for _product in "${products[@]}"; do
-            sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgname}/installer_input.txt"
+            sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgbase}/installer_input.txt"
         done
     fi
 }
