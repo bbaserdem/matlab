@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# Maintainer: Grey Christoforo <first name at last name dot net>
-# Maintainer: Darcy Hu <hot123tea123@gmail.com>
-# Maintainer: Grey Christoforo <first name at last name dot net>
-# Contributor: Jingbei Li <i@jingbei.li>
-# Maintainer: Antony Lee <anntzer dot lee at gmail dot com>
-
 # PKGBUILD edited by; Batuhan Başerdem <lastname.firstname@gmail.com>
 pkgname=matlab
 
@@ -14,13 +8,11 @@ pkgname=matlab
 ##      matlab.fik : Plain text file installation key
 ##      matlab.lic : The license file
 ##      matlab.tar : Software tarball
-
 ## GETTING LICENCE FILES:
-##      Log into mathworks account; https://mathworks.com/myaccount/
+##      Log into mathworks account; https://mathworks.com/mwaccount/
 ##      From the licence, navigate to "Activate to Retrieve Licence File"
 ##      The File Installation Key will be available as plain text
 ##      Download the licence file
-
 ## GETTING TARBALL
 ##      Download the installer, unzip and run the installer
 ##      Set the -tmpdir flag to some directory
@@ -46,22 +38,19 @@ pkgname=matlab
 # ├── patents.txt                   # In zip
 # ├── readme.txt                    # In zip
 # ├── trademarks.txt                # In zip
-# └── VersionInfo.xml               # In zip`
+# └── VersionInfo.xml               # In zip
 
 # To perform partial install, set to true and modify the products list
 
-# Recently also added matlab engine for python
-_partialinstall=false
-
 pkgbase='matlab'
-pkgname=('matlab' 'matlab-licenses' 'matlab-engine-for-python')
-pkgver=9.6.0.1072779
-pkgrel=3
+pkgname=('matlab-licenses' 'matlab-engine-for-python' 'matlab-bin')
+pkgver=9.7.0.1190202
+pkgrel=1
 pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
 license=(custom)
-makedepends=('gendesk')
+makedepends=('gendesk' 'python' 'find')
 depends=('gcc6'
          'gconf'
          'gendesk'
@@ -87,41 +76,92 @@ md5sums=("SKIP"
          "SKIP"
          "SKIP")
 
-instdir="/opt/tmw/${pkgbase}"
+# Edit package build array for a installation with select toolkits
+partialinstall=false
+instdir="/opt/tmw/${pkgbase}-2019b"
 
 prepare() {
     msg2 'Extracting file installation key'
-    _fik=$(grep -o [0-9-]* ${pkgname}.fik)
+    _fik=$(grep -o [0-9-]* ${pkgbase}.fik)
 
     msg2 'Modifying the installer settings'
-    sed -i "s,^# destinationFolder=,destinationFolder=${pkgdir}/${instdir},"    "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# agreeToLicense=,agreeToLicense=yes,"                           "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# mode=,mode=silent,"                                            "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik},"             "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# licensePath=,licensePath=${srcdir}/matlab.lic,"                "${srcdir}/${pkgname}/installer_input.txt"
+    sed -i "s,^# destinationFolder=,destinationFolder=${srcdir}/files," "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s,^# agreeToLicense=,agreeToLicense=yes,"                   "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s,^# mode=,mode=silent,"                                    "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik},"     "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s,^# licensePath=,licensePath=${srcdir}/matlab.lic,"        "${srcdir}/${pkgbase}/installer_input.txt"
 
     msg2 'Creating desktop file'
-    gendesk -f -n --pkgname "${pkgname}" --pkgdesc "${pkgdesc}" --categories "Development;Education;Science;Mathematics;IDE"
-    sed -i "/^Exec=/ s,$, -desktop," "${srcdir}/${pkgname}.desktop"
+    gendesk -f -n \
+        --pkgname "${pkgbase}" \
+        --pkgdesc "${pkgdesc}" \
+        --categories "Development;Education;Science;Mathematics;IDE" \
+        --mimetypes "application/x-matlab-data;text/x-matlab" \
+        --exec "${instdir}/matlab -desktop"
 
-    if [ ! -z ${_products+isSet} ]; then
+    if [ ! -z ${products+isSet} ]; then
         msg2 'Building a package with a subset of the licensed products.'
-        for _product in "${_products[@]}"; do
-              sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgname}/installer_input.txt"
+        for _product in "${products[@]}"; do
+            sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgname}/installer_input.txt"
         done
     fi
 }
 
-package_matlab() {
+build() {
     msg2 'Starting MATLAB installer'
-    "${srcdir}/${pkgname}/install" -inputFile "${srcdir}/${pkgname}/installer_input.txt"
+    "${srcdir}/${pkgbase}/install" -inputFile "${srcdir}/${pkgbase}/installer_input.txt"
+}
 
-    msg2 'Installing license'
-    install -D -m644 "${pkgdir}/${instdir}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
-    # Move licence files to the source files, so they can be installed with the side package
-    rm -rf "${srcdir}/${pkgname}/licenses"
-    mv "${pkgdir}/${instdir}/licenses" "${srcdir}/licenses"
-    mkdir -p "${pkgdir}/${instdir}/licenses"
+package_matlab-licenses() {
+    depends=("matlab-bin=$pkgver")
+    mkdir -p "${pkgdir}/${instdir}"
+    mv "${srcdir}/files/licenses" "${pkgdir}/${instdir}/licenses"
+    install -D -m644 "${srcdir}/${pkgbase}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgbase}/LICENSE"
+}
+
+package_matlab-engine-for-python() {
+    # https://aur.archlinux.org/packages/matlab-engine-for-python/
+    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
+    depends=("matlab-bin=$pkgver" 'python')
+
+    msg2 'Installing MATLAB engine API for Python'
+    cd "${srcdir}/files/extern/engines/python"
+    
+    # We get the latest python supported version
+    pysys="$(python -c 'import sys; print(sys.version_info.minor)')"
+    pymat="$(find . -name 'matlabengineforpython*.so' | sort | grep -Po '(?<=\d_)\d' | tail -1)"
+    
+    # Create sitecustomize.py so that setup does not complain about version number
+    if [[ "${pysys}" != "${pymat}" ]] ; then
+        cat "import sys" > "${srcdir}/sitecustomize.py"
+        cat "sys.version_info = (3, ${pymat}, 0)" >> "${srcdir}/sitecustomize.py"
+    fi
+
+    # Run the installation script, with the new sitecustomize.py
+    PYTHONPATH="${srcdir}" python setup.py \
+        build --build-base="${srcdir}" \
+        install --root="${pkgdir}/" \
+        --optimize=1
+
+    # Fix versioning confusion
+    if [[ "${pysys}" != "${pymat}" ]] ; then
+        msg2 'Fixing python version'
+        _prefix="$(python -c 'import sys; print(sys.prefix)')"
+        # Copy files to usr/lib
+        cp -r "${pkgdir}/${_prefix}/lib/python3.${pymat}" "${pkgdir}/${_prefix}/lib/python3.${pysys}"
+        # Fix the egg name in usr/lib
+        _oldegg="$(ls "${pkgdir}/${_prefix}/lib/python3.${pysys}/site-packages/"*"-py3.${pymat}.egg-info")"
+        mv "${_oldegg}" "${_oldegg%-py3."${pymat}".egg-info}-py3.${pysys}.egg-info"
+        # Patch the __init__.py
+        sed -i "s|sys.version_info|(3, ${pymat}, 0)|" \
+            "${srcdir}/usr/lib/lib/python3.${pysys}/site-packages/${pkgbase}/engine/__init__.py"
+    fi
+}
+
+package_matlab-bin() {
+    msg2 'Moving files to staging area'
+    mv "${srcdir}/files" "${pkgdir}/${instdir}"
+    chown --recursive root:root "${pkgdir}/${instdir}"
 
     msg2 'Creating links for executables'
     install -d -m755 "${pkgdir}/usr/bin/"
@@ -157,53 +197,10 @@ package_matlab() {
     # make sure MATLAB can find libgfortran.so.3
     cp "${pkgdir}/${instdir}/bin/matlab" "${pkgdir}/${instdir}/backup/bin"
     sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${instdir}/bin/matlab"
-
-    # Move external files such that they can be used to build matlab
-
 }
 
-package_matlab-licenses() {
-    depends=("matlab=$pkgver")
-    mkdir -p "${pkgdir}/${instdir}"
-    mv "${srcdir}/licenses" "${pkgdir}/${instdir}/licenses"
-}
-
-package_matlab-engine-for-python() {
-    depends=("matlab=$pkgver")
-    mkdir -p "${pkgdir}/${instdir}"
-    # I do not have the limitation of running setup.py in 'build()', as the
-    #   package files neccessary are also built using this package.
-
-    # https://aur.archlinux.org/packages/matlab-engine-for-python/
-    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
-    msg2 'Installing MATLAB engine API for Python'
-    cd "${pkgdir}/${instdir}/extern/engines/python"
-    # We get the latest python supported version
-    sys_python_version="$(python -c 'import sys; print(sys.version_info.minor)')"
-    mat_supported_python="$(find . -name 'matlabengineforpython*.so' | sort | grep -Po '(?<=\d_)\d' | tail -1)"
-    cat "import sys
-sys.version_info = (3, ${mat_supported_python}, 0)" > "${srcdir}/sitecustomize.py"
-    # Run the installation script, with the new sitecustomize.py
-    PYTHONPATH="${srcdir}" python setup.py \
-        build --build-base="${srcdir}" \
-        install --root="${srcdir}" \
-        --optimize=1
-
-    # Fix version confusion
-    if [[ "${sys_python_version}" != "${mat_supported_python}" ]] ; then
-        # Copy files to usr/lib
-        cp -r "${srcdir}/usr/lib/python3.${mat_supported_python}" "${sys_python_version}"
-        # Fix the egg name in usr/lib
-        _oldegg="$(ls "${srcdir}/usr/lib/python3.${sys_python_version}/site-packages/"*"-py3.${mat_supported_python}.egg-info")"
-        mv "${_oldegg}" "${_oldegg%-py3."${mat_supported_python}".egg-info}-py3.${sys_python_version}.egg-info"
-        # Patch the __init__.py
-        sed -i "s/sys.version_info/(3, ${mat_supported_python}, 0)/" \
-            "${srcdir}/usr/lib/python3.${sys_python_version}/site-packages/${pkgname}/engine/__init__.py"
-    fi
-}
-
-if ${_partialinstall} && [ -z ${_products+isSet} ]; then
-    _products=(
+if ${partialinstall} && [ -z ${products+isSet} ]; then
+    products=(
         "5G_Toolbox"
         "Aerospace_Blockset"
         "Aerospace_Toolbox"
