@@ -35,7 +35,7 @@ Download the licence file as *matlab.lic*
 
 ### Source Files
 
-There are multiple ways of doing this, but I only do the internet installer
+There are multiple ways of doing this, but I only test the internet installer.
 
 #### Internet Installer
 

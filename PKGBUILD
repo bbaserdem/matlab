@@ -50,7 +50,7 @@ pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
 license=(custom)
-makedepends=('gendesk' 'python')
+makedepends=('gendesk' 'python' 'findutils')
 depends=('gcc6'
          'gconf'
          'glu'
@@ -62,7 +62,6 @@ depends=('gcc6'
          'libxtst'
          'nss'
          'portaudio'
-         'python2'
          'qt5-svg'
          'qt5-webkit'
          'qt5-websockets'
@@ -77,13 +76,14 @@ md5sums=("SKIP"
 
 # Edit package build array for a installation with select toolkits
 partialinstall=false
-instdir="/opt/tmw/${pkgbase}-2019b"
+instdir="/opt/tmw/${pkgbase}"
 
 prepare() {
     msg2 'Extracting file installation key'
     _fik=$(grep -o [0-9-]* ${pkgbase}.fik)
 
     msg2 'Modifying the installer settings'
+    # Installation will be done to $srcdir/files
     sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/files|" "${srcdir}/${pkgbase}/installer_input.txt"
     sed -i "s|^# agreeToLicense=|agreeToLicense=yes|"                   "${srcdir}/${pkgbase}/installer_input.txt"
     sed -i "s|^# mode=|mode=automated|"                                 "${srcdir}/${pkgbase}/installer_input.txt"
@@ -109,6 +109,31 @@ prepare() {
 build() {
     msg2 'Starting MATLAB installer'
     "${srcdir}/${pkgbase}/install" -inputFile "${srcdir}/${pkgbase}/installer_input.txt"
+
+    # https://aur.archlinux.org/packages/matlab-engine-for-python/
+    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
+    msg2 'Installing matlab engine for python'
+    cd "${srcdir}/files/extern/engines/python"
+    # Getting appropriate python version for spoofing
+    _prefix="$(python -c 'import sys; print(sys.prefix)')"
+    _pytminor="$(python -c 'import sys; print(sys.version_info.minor)')"
+    _matminor="$(find . -name 'matlabengineforpython3*.so' |
+                 sort |
+                 sed 's|.*matlabengineforpython3_\([0-9]\)\.so|\1|g' |
+                 tail -1)"
+    cat 'import sys' > "${srcdir}/sitecustomize.py"
+    cat "sys.version_info = (3, ${_matminor}, 0)" >> "${srcdir}/sitecustomize.py"
+    PYTHONPATH="${srcdir}" python setup.py
+        build --build-base="${srcdir}" \
+        install --root="${srcdir}" --optimize 1
+    # Correct files if MATLAB is ancient (as always)
+    if [[ "${_pytminor}" != "${_matminor}" ]]; then
+        mv "${srcdir}/${_prefix}/lib/python3".{"${_matminor}","${_pytminor}"}
+        _egginfo="$(ls "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/"*"-py3.${_matminor}.egg-info")"
+        mv "${_egginfo}" "${_egginfo%py3."${_matminor}".egg-info}py3.${_pytminor}.egg-info"
+        sed -i "s|sys.version_info|(3, $mat_minor, 0)|" \
+            "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/matlab/engine/__init__.py"
+    fi
 }
 
 package_matlab-licenses() {
@@ -119,46 +144,18 @@ package_matlab-licenses() {
 }
 
 package_matlab-engine-for-python() {
-    # https://aur.archlinux.org/packages/matlab-engine-for-python/
-    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
     depends=("matlab-bin=$pkgver" 'python')
+    
+    # Get the used prefix
+    _prefix="$(python -c 'import sys; print(sys.prefix)')"
 
-    msg2 'Installing MATLAB engine API for Python'
+    # Move to packaging files
+    mv "${srcdir}/${_prefix}" "${pkgdir}"
     cd "${srcdir}/files/extern/engines/python"
-    
-    # We get the latest python supported version
-    pysys="$(python -c 'import sys; print(sys.version_info.minor)')"
-    pymat="$(find . -name 'matlabengineforpython*.so' | sort | grep -Po '(?<=\d_)\d' | tail -1)"
-    
-    # Create sitecustomize.py so that setup does not complain about version number
-    if [[ "${pysys}" != "${pymat}" ]] ; then
-        cat "import sys" > "${srcdir}/sitecustomize.py"
-        cat "sys.version_info = (3, ${pymat}, 0)" >> "${srcdir}/sitecustomize.py"
-    fi
-
-    # Run the installation script, with the new sitecustomize.py
-    PYTHONPATH="${srcdir}" python setup.py \
-        build --build-base="${srcdir}" \
-        install --root="${pkgdir}/" \
-        --optimize=1
-
-    # Fix versioning confusion
-    if [[ "${pysys}" != "${pymat}" ]] ; then
-        msg2 'Fixing python version'
-        _prefix="$(python -c 'import sys; print(sys.prefix)')"
-        # Copy files to usr/lib
-        cp -r "${pkgdir}/${_prefix}/lib/python3.${pymat}" "${pkgdir}/${_prefix}/lib/python3.${pysys}"
-        # Fix the egg name in usr/lib
-        _oldegg="$(ls "${pkgdir}/${_prefix}/lib/python3.${pysys}/site-packages/"*"-py3.${pymat}.egg-info")"
-        mv "${_oldegg}" "${_oldegg%-py3."${pymat}".egg-info}-py3.${pysys}.egg-info"
-        # Patch the __init__.py
-        sed -i "s|sys.version_info|(3, ${pymat}, 0)|" \
-            "${srcdir}/usr/lib/lib/python3.${pysys}/site-packages/${pkgbase}/engine/__init__.py"
-    fi
 }
 
 package_matlab-bin() {
-    msg2 'Moving files to staging area'
+    msg2 'Moving files from staging area'
     mv "${srcdir}/files" "${pkgdir}/${instdir}"
     chown --recursive root:root "${pkgdir}/${instdir}"
 
