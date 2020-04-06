@@ -1,7 +1,4 @@
-# Maintainer: Grey Christoforo <first name at last name dot net>
-# Maintainer: Darcy Hu <hot123tea123@gmail.com>
-# Maintainer: Grey Christoforo <first name at last name dot net>
-# Contributor: Jingbei Li <i@jingbei.li>
+#!/bin/bash
 
 # PKGBUILD edited by; Batuhan Başerdem <lastname.firstname@gmail.com>
 pkgname=matlab
@@ -11,13 +8,11 @@ pkgname=matlab
 ##      matlab.fik : Plain text file installation key
 ##      matlab.lic : The license file
 ##      matlab.tar : Software tarball
-
 ## GETTING LICENCE FILES:
 ##      Log into mathworks account; https://mathworks.com/mwaccount/
 ##      From the licence, navigate to "Activate to Retrieve Licence File"
 ##      The File Installation Key will be available as plain text
 ##      Download the licence file
-
 ## GETTING TARBALL
 ##      Download the installer, unzip and run the installer
 ##      Set the -tmpdir flag to some directory
@@ -43,20 +38,19 @@ pkgname=matlab
 # ├── patents.txt                   # In zip
 # ├── readme.txt                    # In zip
 # ├── trademarks.txt                # In zip
-# └── VersionInfo.xml               # In zip`
+# └── VersionInfo.xml               # In zip
 
 # To perform partial install, set to true and modify the products list
-_partialinstall=false
 
-pkgbase="matlab"
-pkgname=("matlab" "matlab-licenses")
-pkgver=9.5.0.944444
-pkgrel=2
+pkgbase='matlab'
+pkgname=('matlab-licenses' 'matlab-engine-for-python' 'matlab-bin')
+pkgver=9.7.0.1190202
+pkgrel=1
 pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
 license=(custom)
-makedepends=('gendesk')
+makedepends=('gendesk' 'python' 'findutils')
 depends=('gcc6'
          'gconf'
          'glu'
@@ -68,53 +62,102 @@ depends=('gcc6'
          'libxtst'
          'nss'
          'portaudio'
-         'python2'
          'qt5-svg'
          'qt5-webkit'
          'qt5-websockets'
          'qt5-x11extras'
          'xerces-c')
-source=("file://matlab.tar"
-        "file://matlab.fik"
-        "file://matlab.lic"
-        "matlab.desktop")
+source=("matlab.tar"
+        "matlab.fik"
+        "matlab.lic")
 md5sums=("SKIP"
-         "SKIP"
          "SKIP"
          "SKIP")
 
+# Edit package build array for a installation with select toolkits
+partialinstall=false
 instdir="/opt/tmw/${pkgbase}"
 
 prepare() {
     msg2 'Extracting file installation key'
-    _fik=$(grep -o [0-9-]* ${pkgname}.fik)
+    _fik=$(grep -o [0-9-]* ${pkgbase}.fik)
 
     msg2 'Modifying the installer settings'
-    sed -i "s,^# destinationFolder=,destinationFolder=${pkgdir}/${instdir},"    "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# agreeToLicense=,agreeToLicense=yes,"                           "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# mode=,mode=silent,"                                            "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik},"             "${srcdir}/${pkgname}/installer_input.txt"
-    sed -i "s,^# licensePath=,licensePath=${srcdir}/matlab.lic,"                "${srcdir}/${pkgname}/installer_input.txt"
+    # Installation will be done to $srcdir/files
+    sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/files|" "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# agreeToLicense=|agreeToLicense=yes|"                   "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# mode=|mode=automated|"                                 "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# fileInstallationKey=|fileInstallationKey=${_fik}|"     "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# licensePath=|licensePath=${srcdir}/matlab.lic|"        "${srcdir}/${pkgbase}/installer_input.txt"
 
-    if [ ! -z ${_products+isSet} ]; then
+    msg2 'Creating desktop file'
+    gendesk -f -n \
+        --pkgname "${pkgbase}" \
+        --pkgdesc "${pkgdesc}" \
+        --categories "Development;Education;Science;Mathematics;IDE" \
+        --mimetypes "application/x-matlab-data;text/x-matlab" \
+        --exec "${instdir}/matlab -desktop"
+
+    if [ ! -z ${products+isSet} ]; then
         msg2 'Building a package with a subset of the licensed products.'
-        for _product in "${_products[@]}"; do
-              sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgname}/installer_input.txt"
+        for _product in "${products[@]}"; do
+            sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgbase}/installer_input.txt"
         done
     fi
 }
 
-package() {
+build() {
     msg2 'Starting MATLAB installer'
-    "${srcdir}/${pkgname}/install" -inputFile "${srcdir}/${pkgname}/installer_input.txt"
+    "${srcdir}/${pkgbase}/install" -inputFile "${srcdir}/${pkgbase}/installer_input.txt"
 
-    msg2 'Installing license'
-    install -D -m644 "${pkgdir}/${instdir}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    # https://aur.archlinux.org/packages/matlab-engine-for-python/
+    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
+    msg2 'Installing matlab engine for python'
+    cd "${srcdir}/files/extern/engines/python"
+    # Getting appropriate python version for spoofing
+    _prefix="$(python -c 'import sys; print(sys.prefix)')"
+    _pytminor="$(python -c 'import sys; print(sys.version_info.minor)')"
+    _matminor="$(find . -name 'matlabengineforpython3*.so' |
+                 sort |
+                 sed 's|.*matlabengineforpython3_\([0-9]\)\.so|\1|g' |
+                 tail -1)"
+    cat 'import sys' > "${srcdir}/sitecustomize.py"
+    cat "sys.version_info = (3, ${_matminor}, 0)" >> "${srcdir}/sitecustomize.py"
+    PYTHONPATH="${srcdir}" python setup.py
+        build --build-base="${srcdir}" \
+        install --root="${srcdir}" --optimize 1
+    # Correct files if MATLAB is ancient (as always)
+    if [[ "${_pytminor}" != "${_matminor}" ]]; then
+        mv "${srcdir}/${_prefix}/lib/python3".{"${_matminor}","${_pytminor}"}
+        _egginfo="$(ls "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/"*"-py3.${_matminor}.egg-info")"
+        mv "${_egginfo}" "${_egginfo%py3."${_matminor}".egg-info}py3.${_pytminor}.egg-info"
+        sed -i "s|sys.version_info|(3, $mat_minor, 0)|" \
+            "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/matlab/engine/__init__.py"
+    fi
+}
 
-    msg2 'Creating links for license'
-    rm -rf "${srcdir}/${pkgname}/licenses"
-    mv "${pkgdir}/${instdir}/licenses" "${srcdir}/licenses"
-    mkdir -p "${pkgdir}/${instdir}/licenses"
+package_matlab-licenses() {
+    depends=("matlab-bin=$pkgver")
+    mkdir -p "${pkgdir}/${instdir}"
+    mv "${srcdir}/files/licenses" "${pkgdir}/${instdir}/licenses"
+    install -D -m644 "${srcdir}/${pkgbase}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgbase}/LICENSE"
+}
+
+package_matlab-engine-for-python() {
+    depends=("matlab-bin=$pkgver" 'python')
+    
+    # Get the used prefix
+    _prefix="$(python -c 'import sys; print(sys.prefix)')"
+
+    # Move to packaging files
+    mv "${srcdir}/${_prefix}" "${pkgdir}"
+    cd "${srcdir}/files/extern/engines/python"
+}
+
+package_matlab-bin() {
+    msg2 'Moving files from staging area'
+    mv "${srcdir}/files" "${pkgdir}/${instdir}"
+    chown --recursive root:root "${pkgdir}/${instdir}"
 
     msg2 'Creating links for executables'
     install -d -m755 "${pkgdir}/usr/bin/"
@@ -124,33 +167,36 @@ package() {
     ln -s "${instdir}/bin/mex" "${pkgdir}/usr/bin/mex-$pkgbase"
 
     msg2 'Installing desktop files'
-    install -D -m755 matlab.desktop "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+    install -D -m644 "${pkgname}.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+
+    msg2 'Creating backup directories'
+    mkdir -p "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts"
+    mkdir -p "${pkgdir}/${instdir}/backup/sys/os/glnxa64"
 
     msg2 'Configuring mex options'
+    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gcc_glnxa64.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
     sed -i "s/gcc/gcc-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gcc_glnxa64.xml"
+    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/g++_glnxa64.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
     sed -i "s/g++/g++-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/g++_glnxa64.xml"
+    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
     sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran.xml"
+    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
     sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml"
     sed -i "s/gfortran6-/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml"
 
     # https://bbs.archlinux.org/viewtopic.php?id=236821
     msg2 'Removing unused library files'
     # See $MATLABROOT/sys/os/glnxa64/README.libstdc++
-    rm ${pkgdir}/${instdir}/sys/os/glnxa64/{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0}
+    mv "${pkgdir}/${instdir}/sys/os/glnxa64/"{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0} "${pkgdir}/${instdir}/backup/sys/os/glnxa64"
     # https://bbs.archlinux.org/viewtopic.php?id=236821
-    rm ${pkgdir}/${instdir}/bin/glnxa64/libfreetype.*
+    mv "${pkgdir}/${instdir}/bin/glnxa64/"libfreetype.* "${pkgdir}/${instdir}/backup/bin/glnxa64"
     # make sure MATLAB can find libgfortran.so.3
+    cp "${pkgdir}/${instdir}/bin/matlab" "${pkgdir}/${instdir}/backup/bin"
     sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${instdir}/bin/matlab"
 }
 
-package_matlab-licenses() {
-  depends=("matlab=$pkgver")
-  mkdir -p "${pkgdir}/${instdir}"
-  mv "${srcdir}/licenses" "${pkgdir}/${instdir}/licenses"
-}
-
-if ${_partialinstall} && [ -z ${_products+isSet} ]; then
-    _products=(
+if ${partialinstall} && [ -z ${products+isSet} ]; then
+    products=(
         "5G_Toolbox"
         "Aerospace_Blockset"
         "Aerospace_Toolbox"
