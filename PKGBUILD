@@ -126,7 +126,7 @@ depends+=(
     'qt5-x11extras'
     'xerces-c')
 provides=('matlab-licenses' 'matlab-engine-for-python' 'matlab-bin')
-source=("matlab.tar"
+source=("matlab.tar.gz"
         "matlab.fik"
         "matlab.lic")
 md5sums=("SKIP"
