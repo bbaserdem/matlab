@@ -28,22 +28,42 @@
 ##          tar --create --verbose --file matlab.tar .../matlab
 
 # To perform partial install, set to true and modify the products list
+# Visit https://www.mathworks.com/products.html for all products
+products=(
+    "MATLAB"
+    #---MATLAB Product Family---#
+    "Parallel_Computing_Toolbox"                # Parallel computing
+    "Curve_Fitting_Toolbox"                     # Math and Optimization
+    "Optimization_Toolbox"
+    "Global_Optimization_Toolbox"
+    "Symbolic_Math_Toolbox"
+    "Partial_Differential_Equation_Toolbox"
+    "Statistics_and_Machine_Learning_Toolbox"   # AI, Data Science, Statistics
+    "Deep_Learning_Toolbox"
+    "Reinforcement_Learning_Toolbox"
+    "Text_Analytics_Toolbox"
+    "MATLAB_Coder"                              # Code Generation
+    "GPU_Coder"
+    "MATLAB_Compiler"                           # Application Deployement
+    "MATLAB_Compiler_SDK"
+    "Database_Toolbox"                          # Database Access and Reporting
+    #---Application Products---#
+    "Signal_Processing_Toolbox"                 # Signal Processing
+    "Audio_Toolbox"
+    "Wavelet_Toolbox"
+    "Image_Processing_Toolbox"                  # Image Processing and Computer Vision
+    "Computer_Vision_Toolbox"
+    "Bioinformatics_Toolbox"                    # Computational Biology
+)
 
-pkgbase='matlab'
-pkgname=(
-    'matlab-licenses'
-    'matlab-engine-for-python'
-    'matlab-bin')
+pkgname=matlab
 pkgver=9.8.0.1323502
 pkgrel=1
 pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
 license=(custom)
-makedepends=(
-    'gendesk'
-    'python'
-    'findutils')
+makedepends=('gendesk' 'python' 'findutils' 'libselinux')
 # For 2020a; from https://hub.docker.com/r/mathworks/matlab-deps/dockerfile
 depends=(
     'ca-certificates'
@@ -90,7 +110,7 @@ depends=(
     'x11vnc'
     'sudo'
     'zlib')
-# These I got from arch and afraid to play around
+# These I got from arch before and afraid to play around
 depends+=(
     'gcc6'
     'gconf'
@@ -105,6 +125,7 @@ depends+=(
     'qt5-websockets'
     'qt5-x11extras'
     'xerces-c')
+provides=('matlab-licenses' 'matlab-engine-for-python' 'matlab-bin')
 source=("matlab.tar"
         "matlab.fik"
         "matlab.lic")
@@ -113,31 +134,30 @@ md5sums=("SKIP"
          "SKIP")
 
 # Edit package build array for a installation with select toolkits
-partialinstall=false
-instdir="/opt/tmw/${pkgbase}"
+partialinstall=true
+instdir="/opt/tmw/${pkgname}"
 
 prepare() {
-    msg2 'Extracting file installation key'
-    _fik=$(grep -o [0-9-]* ${pkgbase}.fik)
+    # Extract file installation key
+    _fik=$(grep -o '[0-9-]*' "${srcdir}/${pkgname}.fik")
 
-    msg2 'Modifying the installer settings'
-    _set="${srcdir}/${pkgbase}/installer_input.txt"
-    # Installation will be done to $srcdir/files
-    sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/files|" "${_set}"
+    # Modify the installer settings'
+    _set="${srcdir}/${pkgname}/installer_input.txt"
+    sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/build|" "${_set}"
     sed -i "s|^# fileInstallationKey=|fileInstallationKey=${_fik}|"     "${_set}"
     sed -i "s|^# agreeToLicense=|agreeToLicense=yes|"                   "${_set}"
     sed -i "s|^# licensePath=|licensePath=${srcdir}/matlab.lic|"        "${_set}"
+
     # Select products if partialinstall is set
-    if [ ! -z ${products+isSet} ]; then
-        msg2 'Building a package with a subset of the licensed products.'
+    if [ "${partialinstall}" = 'true' ]; then
         for _prod in "${products[@]}"; do
             sed -i 's|^#\(product.'"${_prod}"'\)|\1|' "${_set}"
         done
     fi
 
-    msg2 'Creating desktop file'
+    # Desktop file
     gendesk -f -n \
-        --pkgname "${pkgbase}" \
+        --pkgname "${pkgname}" \
         --pkgdesc "${pkgdesc}" \
         --categories "Development;Education;Science;Mathematics;IDE" \
         --mimetypes "application/x-matlab-data;text/x-matlab" \
@@ -145,15 +165,14 @@ prepare() {
 }
 
 build() {
-    msg2 'Starting MATLAB installer'
     # Using the installer with the -inputFile parameter will automatically
     #   cause the installation to be non-interactive
-    "${srcdir}/${pkgbase}/install" -inputFile "${srcdir}/${pkgbase}/installer_input.txt"
+    "${srcdir}/${pkgname}/install" -inputFile "${srcdir}/${pkgname}/installer_input.txt"
 
+    # Python API
     # https://aur.archlinux.org/packages/matlab-engine-for-python/
     # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
-    msg2 'Installing matlab engine for python'
-    cd "${srcdir}/files/extern/engines/python"
+    cd "${srcdir}/build/extern/engines/python"
     # Getting appropriate python version for spoofing
     _prefix="$(python -c 'import sys; print(sys.prefix)')"
     _pytminor="$(python -c 'import sys; print(sys.version_info.minor)')"
@@ -161,188 +180,83 @@ build() {
                  sort |
                  sed 's|.*matlabengineforpython3_\([0-9]\)\.so|\1|g' |
                  tail -1)"
-    cat 'import sys' > "${srcdir}/sitecustomize.py"
-    cat "sys.version_info = (3, ${_matminor}, 0)" >> "${srcdir}/sitecustomize.py"
-    PYTHONPATH="${srcdir}" python setup.py
-        build --build-base="${srcdir}" \
+    echo 'import sys' > "${srcdir}/sitecustomize.py"
+    echo "sys.version_info = (3, ${_matminor}, 0)" >> "${srcdir}/sitecustomize.py"
+    PYTHONPATH="${srcdir}" python setup.py \
         install --root="${srcdir}" --optimize 1
     # Correct files if MATLAB is ancient (as always)
     if [[ "${_pytminor}" != "${_matminor}" ]]; then
         mv "${srcdir}/${_prefix}/lib/python3".{"${_matminor}","${_pytminor}"}
         _egginfo="$(ls "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/"*"-py3.${_matminor}.egg-info")"
         mv "${_egginfo}" "${_egginfo%py3."${_matminor}".egg-info}py3.${_pytminor}.egg-info"
-        sed -i "s|sys.version_info|(3, $mat_minor, 0)|" \
+        sed -i "s|sys.version_info|(3, $_matminor, 0)|" \
             "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/matlab/engine/__init__.py"
     fi
 }
 
-package_matlab-licenses() {
-    depends=("matlab-bin=$pkgver")
-    mkdir -p "${pkgdir}/${instdir}"
-    mv "${srcdir}/files/licenses" "${pkgdir}/${instdir}/licenses"
-    install -D -m644 "${srcdir}/${pkgbase}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgbase}/LICENSE"
-}
-
-package_matlab-engine-for-python() {
-    depends=("matlab-bin=$pkgver" 'python')
-    
-    # Get the used prefix
-    _prefix="$(python -c 'import sys; print(sys.prefix)')"
-
-    # Move to packaging files
-    mv "${srcdir}/${_prefix}" "${pkgdir}"
-    cd "${srcdir}/files/extern/engines/python"
-}
-
-package_matlab-bin() {
-    msg2 'Moving files from staging area'
-    mv "${srcdir}/files" "${pkgdir}/${instdir}"
+package() {
+    # Moving files from build area
+    mv "${srcdir}/build" "${pkgdir}/${instdir}"
     chown --recursive root:root "${pkgdir}/${instdir}"
 
-    msg2 'Creating links for executables'
+    # Moving the python site package
+    mv "${srcdir}/$(python -c 'import sys; print(sys.prefix)')" "${pkgdir}"
+
+    # Moving license
+    install -D -m644 "${srcdir}/${pkgname}/license_agreement.txt" \
+        "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+    # Symlink executables'
     install -d -m755 "${pkgdir}/usr/bin/"
     for _executable in deploytool matlab mbuild mcc; do
         ln -s "${instdir}/bin/${_executable}" "${pkgdir}/usr/bin/${_executable}"
     done
-    ln -s "${instdir}/bin/mex" "${pkgdir}/usr/bin/mex-$pkgbase"
+    # This would otherwise conflict with mixtex
+    ln -s "${instdir}/bin/mex" "${pkgdir}/usr/bin/mex-${pkgname}"
+    # Why is this in this directory, I wonder...
+    ln -s "${instdir}/bin/glnxa64/mlint" "${pkgdir}/usr/bin/mlint"
 
-    msg2 'Installing desktop files'
+    # Install desktop files
     install -D -m644 "${pkgname}.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
 
-    msg2 'Creating backup directories'
+    # Create backup directories
     mkdir -p "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts"
     mkdir -p "${pkgdir}/${instdir}/backup/sys/os/glnxa64"
 
-    msg2 'Configuring mex options'
-    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gcc_glnxa64.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
-    sed -i "s/gcc/gcc-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gcc_glnxa64.xml"
-    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/g++_glnxa64.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
-    sed -i "s/g++/g++-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/g++_glnxa64.xml"
-    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
-    sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran.xml"
-    cp "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml" "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts/"
-    sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml"
-    sed -i "s/gfortran6-/gfortran-6/g" "${pkgdir}/${instdir}/bin/glnxa64/mexopts/gfortran6.xml"
+    # Link mex options to ancient libraries
+    sysdir="bin/glnxa64/mexopts"
+    mkdir -p "${pkgdir}/${instdir}/backup/${sysdir}"
+    cp "${pkgdir}/${instdir}/${sysdir}/gcc_glnxa64.xml" \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    sed -i "s/gcc/gcc-6/g" "${pkgdir}/${instdir}/${sysdir}/gcc_glnxa64.xml"
+    cp "${pkgdir}/${instdir}/${sysdir}/g++_glnxa64.xml" \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    sed -i "s/g++/g++-6/g" "${pkgdir}/${instdir}/${sysdir}/g++_glnxa64.xml"
+    cp "${pkgdir}/${instdir}/${sysdir}/gfortran.xml" \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/${sysdir}/gfortran.xml"
+    cp "${pkgdir}/${instdir}/${sysdir}/gfortran6.xml" \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    sed -i "s/gfortran/gfortran-6/g" "${pkgdir}/${instdir}/${sysdir}/gfortran6.xml"
 
-    # https://bbs.archlinux.org/viewtopic.php?id=236821
-    msg2 'Removing unused library files'
-    # See $MATLABROOT/sys/os/glnxa64/README.libstdc++
-    mv "${pkgdir}/${instdir}/sys/os/glnxa64/"{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0} "${pkgdir}/${instdir}/backup/sys/os/glnxa64"
-    # https://bbs.archlinux.org/viewtopic.php?id=236821
-    mv "${pkgdir}/${instdir}/bin/glnxa64/"libfreetype.* "${pkgdir}/${instdir}/backup/bin/glnxa64"
+    # Remove unused library files
+    # <MATLABROOT>/sys/os/glnxa64/README.libstdc++
+    sysdir="sys/os/glnxa64"
+    mkdir -p "${pkgdir}/${instdir}/backup/${sysdir}"
+    mv "${pkgdir}/${instdir}/${sysdir}/"{libstdc++.so.6.0.22,libstdc++.so.6} \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    mv "${pkgdir}/${instdir}/${sysdir}/libgcc_s.so.1" \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    mv "${pkgdir}/${instdir}/${sysdir}/"{libgfortran.so.3.0.0,libgfortran.so.3} \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+    mv "${pkgdir}/${instdir}/${sysdir}/"{libquadmath.so.0.0.0,libquadmath.so.0} \
+        "${pkgdir}/${instdir}/backup/${sysdir}/"
+
     # make sure MATLAB can find libgfortran.so.3
+    mkdir -p "${pkgdir}/${instdir}/backup/bin"
     cp "${pkgdir}/${instdir}/bin/matlab" "${pkgdir}/${instdir}/backup/bin"
-    sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${instdir}/bin/matlab"
-}
+    sed -i 's|LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`"|LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'"|g' "${pkgdir}/${instdir}/bin/matlab"
 
-if [ ! -z "${partialinstall+isSet}" ] && [ -z "${products+isSet}" ]; then
-    products=(
-        "5G_Toolbox"
-        "AUTOSAR_Blockset"
-        "Aerospace_Blockset"
-        "Aerospace_Toolbox"
-        "Antenna_Toolbox"
-        "Audio_Toolbox"
-        "Automated_Driving_Toolbox"
-        "Bioinformatics_Toolbox"
-        "Communications_Toolbox"
-        "Computer_Vision_Toolbox"
-        "Control_System_Toolbox"
-        "Curve_Fitting_Toolbox"
-        "DO_Qualification_Kit"
-        "DSP_System_Toolbox"
-        "Data_Acquisition_Toolbox"
-        "Database_Toolbox"
-        "Datafeed_Toolbox"
-        "Deep_Learning_Toolbox"
-        "Econometrics_Toolbox"
-        "Embedded_Coder"
-        "Filter_Design_HDL_Coder"
-        "Financial_Instruments_Toolbox"
-        "Financial_Toolbox"
-        "Fixed_Point_Designer"
-        "Fuzzy_Logic_Toolbox"
-        "GPU_Coder"
-        "Global_Optimization_Toolbox"
-        "HDL_Coder"
-        "HDL_Verifier"
-        "IEC_Certification_Kit"
-        "Image_Acquisition_Toolbox"
-        "Image_Processing_Toolbox"
-        "Instrument_Control_Toolbox"
-        "LTE_Toolbox"
-        "MATLAB"
-        "MATLAB_Coder"
-        "MATLAB_Compiler"
-        "MATLAB_Compiler_SDK"
-        "MATLAB_Parallel_Server"
-        "MATLAB_Production_Server"
-        "MATLAB_Report_Generator"
-        "MATLAB_Web_App_Server"
-        "Mapping_Toolbox"
-        "Mixed_Signal_Blockset"
-        "Model_Predictive_Control_Toolbox"
-        "Model_Based_Calibration_Toolbox"
-        "Motor_Control_Blockset"
-        "Navigation_Toolbox"
-        "OPC_Toolbox"
-        "Optimization_Toolbox"
-        "Parallel_Computing_Toolbox"
-        "Partial_Differential_Equation_Toolbox"
-        "Phased_Array_System_Toolbox"
-        "Polyspace_Bug_Finder"
-        "Polyspace_Bug_Finder_Server"
-        "Polyspace_Code_Prover"
-        "Polyspace_Code_Prover_Server"
-        "Powertrain_Blockset"
-        "Predictive_Maintenance_Toolbox"
-        "RF_Blockset"
-        "RF_Toolbox"
-        "ROS_Toolbox"
-        "Reinforcement_Learning_Toolbox"
-        "Risk_Management_Toolbox"
-        "Robotics_System_Toolbox"
-        "Robust_Control_Toolbox"
-        "Sensor_Fusion_and_Tracking_Toolbox"
-        "SerDes_Toolbox"
-        "Signal_Processing_Toolbox"
-        "SimBiology"
-        "SimEvents"
-        "Simscape"
-        "Simscape_Driveline"
-        "Simscape_Electrical"
-        "Simscape_Fluids"
-        "Simscape_Multibody"
-        "Simulink"
-        "Simulink_3D_Animation"
-        "Simulink_Check"
-        "Simulink_Code_Inspector"
-        "Simulink_Coder"
-        "Simulink_Compiler"
-        "Simulink_Control_Design"
-        "Simulink_Coverage"
-        "Simulink_Design_Optimization"
-        "Simulink_Design_Verifier"
-        "Simulink_Desktop_Real_Time"
-        "Simulink_PLC_Coder"
-        "Simulink_Real_Time"
-        "Simulink_Report_Generator"
-        "Simulink_Requirements"
-        "Simulink_Test"
-        "SoC_Blockset"
-        "Spreadsheet_Link"
-        "Stateflow"
-        "Statistics_and_Machine_Learning_Toolbox"
-        "Symbolic_Math_Toolbox"
-        "System_Composer"
-        "System_Identification_Toolbox"
-        "Text_Analytics_Toolbox"
-        "Trading_Toolbox"
-        "Vehicle_Dynamics_Blockset"
-        "Vehicle_Network_Toolbox"
-        "Vision_HDL_Toolbox"
-        "WLAN_Toolbox"
-        "Wavelet_Toolbox"
-        "Wireless_HDL_Toolbox"
-    )
-fi
+    # https://bbs.archlinux.org/viewtopic.php?id=236821
+    # These steps were deleted cause matlab switched to new freetype
+}
