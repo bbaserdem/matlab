@@ -26,6 +26,10 @@
 ##      Download the files to an empty directory called matlab
 ##      Run following;
 ##          tar --create --verbose --file matlab.tar.gz .../matlab
+## LARGE FILES
+##      To transport large files in fat32 media; use split and cat;
+##          split --bytes 3G --numeric-suffixes=0 matlab.tar.gz matlab.tar.gz.
+##          cat matlab.tar.gz.* > matlab.tar.gz
 
 # To perform partial install, set to true and modify the products list
 # Visit https://www.mathworks.com/products.html for all products
