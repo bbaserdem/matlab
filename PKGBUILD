@@ -161,7 +161,9 @@ prepare() {
         --pkgdesc "${pkgdesc}" \
         --categories "Development;Education;Science;Mathematics;IDE" \
         --mimetypes "application/x-matlab-data;text/x-matlab" \
-        --exec "${instdir}/matlab -desktop"
+        --exec "matlab -desktop"
+
+    # Create custom python header, to spoof python version
 }
 
 build() {
@@ -169,40 +171,57 @@ build() {
     #   cause the installation to be non-interactive
     "${srcdir}/${pkgname}/install" -inputFile "${srcdir}/${pkgname}/installer_input.txt"
 
-    # Python API
+    # Create spoofing for Python API
     # https://aur.archlinux.org/packages/matlab-engine-for-python/
-    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
     cd "${srcdir}/build/extern/engines/python"
     # Getting appropriate python version for spoofing
-    _prefix="$(python -c 'import sys; print(sys.prefix)')"
-    _pytminor="$(python -c 'import sys; print(sys.version_info.minor)')"
-    _matminor="$(find . -name 'matlabengineforpython3*.so' |
-                 sort |
-                 sed 's|.*matlabengineforpython3_\([0-9]\)\.so|\1|g' |
-                 tail -1)"
+    _matminor="$(find "${srcdir}/build/extern/engines/python" \
+        -name 'matlabengineforpython3*.so' |
+        sort |
+        sed 's|.*matlabengineforpython3_\([0-9]\)\.so|\1|g' |
+        tail -1)"
     echo 'import sys' > "${srcdir}/sitecustomize.py"
     echo "sys.version_info = (3, ${_matminor}, 0)" >> "${srcdir}/sitecustomize.py"
-    PYTHONPATH="${srcdir}" python setup.py \
-        install --root="${srcdir}" --optimize 1
-    # Correct files if MATLAB is ancient (as always)
-    if [[ "${_pytminor}" != "${_matminor}" ]]; then
-        mv "${srcdir}/${_prefix}/lib/python3".{"${_matminor}","${_pytminor}"}
-        _egginfo="$(ls "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/"*"-py3.${_matminor}.egg-info")"
-        mv "${_egginfo}" "${_egginfo%py3."${_matminor}".egg-info}py3.${_pytminor}.egg-info"
-        sed -i "s|sys.version_info|(3, $_matminor, 0)|" \
-            "${srcdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/matlab/engine/__init__.py"
-    fi
+
 }
 
 package() {
+    # Install the python API
+    # https://www.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html
+    cd "${srcdir}/build/extern/engines/python"
+    PYTHONPATH="${srcdir}" python setup.py \
+        install --root="${pkgdir}" --optimize 1
+    # Spoofing trick to fool matlab into believing 3.8 is supported
+    _matminor="$(find "${srcdir}/build/extern/engines/python" \
+        -name 'matlabengineforpython3*.so' |
+        sort |
+        sed 's|.*matlabengineforpython3_\([0-9]\)\.so|\1|g' |
+        tail -1)"
+    _prefix="$(python -c 'import sys; print(sys.prefix)')"
+    _pytminor="$(python -c 'import sys; print(sys.version_info.minor)')"
+    # Correct file names
+    if [[ "${_pytminor}" != "${_matminor}" ]]; then
+        mv "${pkgdir}/${_prefix}/lib/python3".{"${_matminor}","${_pytminor}"}
+        _egginfo="$(ls "${pkgdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/"*"-py3.${_matminor}.egg-info")"
+        mv "${_egginfo}" "${_egginfo%py3."${_matminor}".egg-info}py3.${_pytminor}.egg-info"
+        sed -i "s|sys.version_info|(3, $_matminor, 0)|" \
+            "${pkgdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/matlab/engine/__init__.py"
+    fi
+    # Fix erronous referances in the _arch.txt files
+    errstr="${srcdir}/build/extern/engines/python/"
+    trustr="${instdir}/extern/engines/python/"
+    for _dir in \
+        "${srcdir}/build/extern/engines/python/build/lib/matlab/engine" \
+        "${pkgdir}/${_prefix}/lib/python3.${_pytminor}/site-packages/matlab/engine" \
+        ; do
+        sed -i "s|${errstr}|${trustr}|" "${_dir}/_arch.txt"
+    done
+
     # Moving files from build area
+    install -dm 0755 "$(dirname "${pkgdir}/${instdir}")"
     mv "${srcdir}/build" "${pkgdir}/${instdir}"
-    chown --recursive root:root "${pkgdir}/${instdir}"
 
-    # Moving the python site package
-    mv "${srcdir}/$(python -c 'import sys; print(sys.prefix)')" "${pkgdir}"
-
-    # Moving license
+    # Copying license
     install -D -m644 "${srcdir}/${pkgname}/license_agreement.txt" \
         "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 
@@ -217,7 +236,8 @@ package() {
     ln -s "${instdir}/bin/glnxa64/mlint" "${pkgdir}/usr/bin/mlint"
 
     # Install desktop files
-    install -D -m644 "${pkgname}.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+    install -D -m644 "${srcdir}/${pkgname}.desktop" \
+        "${pkgdir}/usr/share/applications/${pkgname}.desktop"
 
     # Create backup directories
     mkdir -p "${pkgdir}/${instdir}/backup/bin/glnxa64/mexopts"
