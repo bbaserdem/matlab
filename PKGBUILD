@@ -25,7 +25,7 @@
 ##          Advanced Options > I want to download without installing
 ##      Download the files to an empty directory called matlab
 ##      Run following;
-##          tar --create --verbose --file matlab.tar .../matlab
+##          tar --create --verbose --file matlab.tar.gz .../matlab
 
 # To perform partial install, set to true and modify the products list
 # Visit https://www.mathworks.com/products.html for all products
