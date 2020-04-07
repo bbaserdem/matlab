@@ -1,56 +1,49 @@
 #!/bin/bash
 
 # PKGBUILD edited by; Batuhan Başerdem <lastname.firstname@gmail.com>
-pkgname=matlab
+# For MATLAB version 2020a
 
-## This PKGBUILD creates an Arch Linux package for the proprietary MATLAB application.
+## This PKGBUILD creates an Arch Linux package for MATLAB
 ## In order to build the package the user must supply;
 ##      matlab.fik : Plain text file installation key
-##      matlab.lic : The license file
+##      matlab.lic : License file
 ##      matlab.tar : Software tarball
-## GETTING LICENCE FILES:
-##      Log into mathworks account; https://mathworks.com/mwaccount/
-##      From the licence, navigate to "Activate to Retrieve Licence File"
-##      The File Installation Key will be available as plain text
-##      Download the licence file
+## FILE INSTALLATION KEY & LICENSE FILE:
+## https://www.mathworks.com/help/install/ug/install-using-a-file-installation-key.html
+##      File installation key identifies this specific installation of matlab.
+##      The license file authorizes that this key can use the toolboxes.
+##      Go to License center on mathworks website;
+##          https://www.mathworks.com/licensecenter
+##      On install and activate tab; select (or create) an appropriate license
+##      Navigate to download the license file and the file installation key
+##      Download the license file and put the file in the repository
+##      Copy paste the file installation key in a plain text file
 ## GETTING TARBALL
-##      Download the installer, unzip and run the installer
-##      Set the -tmpdir flag to some directory
-##      The installer will first install toolboxes in this directory
-##      When the 'Downloading' switches to 'Installing', stop the installation
-##      To be extra sure; pause, copy the temp directory, and then quit.
-##      Merge the toolboxes with the files in the original zip.
-##      The installer tarball should have the following structure;
-# matlab
-# ├── archives/                     # In zip and tmpdir
-# ├── bin/                          # In zip
-# ├── etc/                          # ???
-# ├── help/                         # In zip
-# ├── java/                         # In zip
-# ├── licenses/                     # ???
-# ├── sys/                          # In zip
-# ├── ui/                           # In zip
-# ├── activate.ini                  # In zip
-# ├── install                       # In zip
-# ├── installer_input.txt           # In zip
-# ├── install_guide.pdf             # In zip
-# ├── license_agreement.txt         # In zip
-# ├── patents.txt                   # In zip
-# ├── readme.txt                    # In zip
-# ├── trademarks.txt                # In zip
-# └── VersionInfo.xml               # In zip
+##      As of 2020a release; this is much easier.
+##    !!On arch, to run the installer, libselinux is needed.
+##      Download the matlab installer, after logging in and accepting license;
+##          Advanced Options > I want to download without installing
+##      Download the files to an empty directory called matlab
+##      Run following;
+##          tar --create --verbose --file matlab.tar .../matlab
 
 # To perform partial install, set to true and modify the products list
 
 pkgbase='matlab'
-pkgname=('matlab-licenses' 'matlab-engine-for-python' 'matlab-bin')
-pkgver=9.7.0.1190202
+pkgname=(
+    'matlab-licenses'
+    'matlab-engine-for-python'
+    'matlab-bin')
+pkgver=9.8.0.1323502
 pkgrel=1
 pkgdesc='A high-level language for numerical computation and visualization'
 arch=('x86_64')
 url='http://www.mathworks.com'
 license=(custom)
-makedepends=('gendesk' 'python' 'findutils')
+makedepends=(
+    'gendesk'
+    'python'
+    'findutils')
 # For 2020a; from https://hub.docker.com/r/mathworks/matlab-deps/dockerfile
 depends=(
     'ca-certificates'
@@ -96,8 +89,7 @@ depends=(
     'xorg-server-xvfb'
     'x11vnc'
     'sudo'
-    'zlib'
-    )
+    'zlib')
 # These I got from arch and afraid to play around
 depends+=(
     'gcc6'
@@ -129,12 +121,19 @@ prepare() {
     _fik=$(grep -o [0-9-]* ${pkgbase}.fik)
 
     msg2 'Modifying the installer settings'
+    _set="${srcdir}/${pkgbase}/installer_input.txt"
     # Installation will be done to $srcdir/files
-    sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/files|" "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s|^# agreeToLicense=|agreeToLicense=yes|"                   "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s|^# mode=|mode=automated|"                                 "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s|^# fileInstallationKey=|fileInstallationKey=${_fik}|"     "${srcdir}/${pkgbase}/installer_input.txt"
-    sed -i "s|^# licensePath=|licensePath=${srcdir}/matlab.lic|"        "${srcdir}/${pkgbase}/installer_input.txt"
+    sed -i "s|^# destinationFolder=|destinationFolder=${srcdir}/files|" "${_set}"
+    sed -i "s|^# fileInstallationKey=|fileInstallationKey=${_fik}|"     "${_set}"
+    sed -i "s|^# agreeToLicense=|agreeToLicense=yes|"                   "${_set}"
+    sed -i "s|^# licensePath=|licensePath=${srcdir}/matlab.lic|"        "${_set}"
+    # Select products if partialinstall is set
+    if [ ! -z ${products+isSet} ]; then
+        msg2 'Building a package with a subset of the licensed products.'
+        for _prod in "${products[@]}"; do
+            sed -i 's|^#\(product.'"${_prod}"'\)|\1|' "${_set}"
+        done
+    fi
 
     msg2 'Creating desktop file'
     gendesk -f -n \
@@ -143,17 +142,12 @@ prepare() {
         --categories "Development;Education;Science;Mathematics;IDE" \
         --mimetypes "application/x-matlab-data;text/x-matlab" \
         --exec "${instdir}/matlab -desktop"
-
-    if [ ! -z ${products+isSet} ]; then
-        msg2 'Building a package with a subset of the licensed products.'
-        for _product in "${products[@]}"; do
-            sed -i "/^#product.${_product}$/ s/^#//" "${srcdir}/${pkgbase}/installer_input.txt"
-        done
-    fi
 }
 
 build() {
     msg2 'Starting MATLAB installer'
+    # Using the installer with the -inputFile parameter will automatically
+    #   cause the installation to be non-interactive
     "${srcdir}/${pkgbase}/install" -inputFile "${srcdir}/${pkgbase}/installer_input.txt"
 
     # https://aur.archlinux.org/packages/matlab-engine-for-python/
@@ -241,17 +235,18 @@ package_matlab-bin() {
     sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/${instdir}/bin/matlab"
 }
 
-if ${partialinstall} && [ -z ${products+isSet} ]; then
+if [ ! -z "${partialinstall+isSet}" ] && [ -z "${products+isSet}" ]; then
     products=(
         "5G_Toolbox"
+        "AUTOSAR_Blockset"
         "Aerospace_Blockset"
         "Aerospace_Toolbox"
         "Antenna_Toolbox"
-        "Audio_System_Toolbox"
-        "Automated_Driving_System_Toolbox"
+        "Audio_Toolbox"
+        "Automated_Driving_Toolbox"
         "Bioinformatics_Toolbox"
         "Communications_Toolbox"
-        "Computer_Vision_System_Toolbox"
+        "Computer_Vision_Toolbox"
         "Control_System_Toolbox"
         "Curve_Fitting_Toolbox"
         "DO_Qualification_Kit"
@@ -275,33 +270,41 @@ if ${partialinstall} && [ -z ${products+isSet} ]; then
         "Image_Acquisition_Toolbox"
         "Image_Processing_Toolbox"
         "Instrument_Control_Toolbox"
-        "LTE_HDL_Toolbox"
         "LTE_Toolbox"
         "MATLAB"
         "MATLAB_Coder"
         "MATLAB_Compiler"
         "MATLAB_Compiler_SDK"
-        "MATLAB_Distributed_Computing_Server"
+        "MATLAB_Parallel_Server"
         "MATLAB_Production_Server"
         "MATLAB_Report_Generator"
+        "MATLAB_Web_App_Server"
         "Mapping_Toolbox"
+        "Mixed_Signal_Blockset"
         "Model_Predictive_Control_Toolbox"
         "Model_Based_Calibration_Toolbox"
+        "Motor_Control_Blockset"
+        "Navigation_Toolbox"
         "OPC_Toolbox"
         "Optimization_Toolbox"
         "Parallel_Computing_Toolbox"
         "Partial_Differential_Equation_Toolbox"
         "Phased_Array_System_Toolbox"
         "Polyspace_Bug_Finder"
+        "Polyspace_Bug_Finder_Server"
         "Polyspace_Code_Prover"
+        "Polyspace_Code_Prover_Server"
         "Powertrain_Blockset"
         "Predictive_Maintenance_Toolbox"
         "RF_Blockset"
         "RF_Toolbox"
+        "ROS_Toolbox"
+        "Reinforcement_Learning_Toolbox"
         "Risk_Management_Toolbox"
         "Robotics_System_Toolbox"
         "Robust_Control_Toolbox"
         "Sensor_Fusion_and_Tracking_Toolbox"
+        "SerDes_Toolbox"
         "Signal_Processing_Toolbox"
         "SimBiology"
         "SimEvents"
@@ -315,6 +318,7 @@ if ${partialinstall} && [ -z ${products+isSet} ]; then
         "Simulink_Check"
         "Simulink_Code_Inspector"
         "Simulink_Coder"
+        "Simulink_Compiler"
         "Simulink_Control_Design"
         "Simulink_Coverage"
         "Simulink_Design_Optimization"
@@ -325,10 +329,12 @@ if ${partialinstall} && [ -z ${products+isSet} ]; then
         "Simulink_Report_Generator"
         "Simulink_Requirements"
         "Simulink_Test"
+        "SoC_Blockset"
         "Spreadsheet_Link"
         "Stateflow"
         "Statistics_and_Machine_Learning_Toolbox"
         "Symbolic_Math_Toolbox"
+        "System_Composer"
         "System_Identification_Toolbox"
         "Text_Analytics_Toolbox"
         "Trading_Toolbox"
@@ -337,5 +343,6 @@ if ${partialinstall} && [ -z ${products+isSet} ]; then
         "Vision_HDL_Toolbox"
         "WLAN_Toolbox"
         "Wavelet_Toolbox"
-        )
+        "Wireless_HDL_Toolbox"
+    )
 fi
