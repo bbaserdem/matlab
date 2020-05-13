@@ -1,3 +1,5 @@
-/pkg
-/src
-/.git
+// Include the built files; and the large ones
+!/matlab.tar.gz
+!/matlab*.tar.zst
+// Ignore everything else here in favor of using git to sync things
+/*

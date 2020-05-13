@@ -1,5 +1,8 @@
-*
+# Ignore all
+/*
+# Except these files
 !/PKGBUILD
-!/.gitignore
-!/.stignore
 !/.SRCINFO
+!/README.md
+!/matlab.script
+!/.stignore
