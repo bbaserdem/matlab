@@ -1,7 +1,7 @@
 # MOVED
 
 Important notice; I will not be maintaining this repo.
-This PKGBUILD will be kept and updated at [my archlinux PKGBUILD repo](https://github.com/bbaserdem/Arch/matlab).
+This PKGBUILD will be kept and updated at [my archlinux PKGBUILD repo](https://github.com/bbaserdem/Arch/tree/master/matlab).
 I noticed a few people have this repo starred; so for integrating versions
 later than 2020a with pacman; refer there instead.
 
